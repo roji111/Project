@@ -1,0 +1,57 @@
+#include <Adafruit_Keypad.h>
+
+const byte ROWS = 4; // Four rows
+const byte COLS = 4; // Four columns
+char keys[ROWS][COLS] = {
+  {'1','2','3','A'},
+  {'4','5','6','B'},
+  {'7','8','9','C'},
+  {'*','0','#','D'}
+};
+byte rowPins[ROWS] = {9, 8, 7, 6}; // Connect to the row pinouts of the keypad
+byte colPins[COLS] = {5, 4, 3, 2}; // Connect to the column pinouts of the keypad
+
+Adafruit_Keypad customKeypad = Adafruit_Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+const int trigPin = 10; // Trigger pin of ultrasonic sensor
+const int echoPin = 11; // Echo pin of ultrasonic sensor
+const int thresholdDistance = 20; // Threshold distance for object detection in cm
+bool threatDetected = false; // State to track if a threat is detected
+
+bool pinEntered = false; // Flag to track if the PIN is entered
+
+void setup() {
+  Serial.begin(9600);
+  customKeypad.begin();
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+}
+
+void loop() {
+  customKeypad.tick(); // Call the tick function to update the keypad state
+  keypadEvent key = customKeypad.read(); // Read the key from the keypad
+
+  // Check for object detection using ultrasonic sensor
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  float duration = pulseIn(echoPin, HIGH);
+  float distance = duration * 0.034 / 2; // Calculate distance in cm
+
+  if (distance < thresholdDistance && !threatDetected && !pinEntered) { // Object detected within threshold distance and PIN not entered yet
+    Serial.println("Object detected. Threat detected!");
+    threatDetected = true; // Set the threat detected state
+
+    // Ask for PIN entry
+    Serial.println("Please enter the PIN:");
+    pinEntered = true; // Set the PIN entered flag
+  }
+
+  if (pinEntered && key.bit.EVENT == KEY_JUST_PRESSED) { // Check if a key is just pressed after PIN is requested
+    Serial.print("Entered digit: ");
+    Serial.println((char)key.bit.KEY); // Print the pressed key
+    delay(500); // Debounce delay
+  }
+}

@@ -1,0 +1,78 @@
+import requests
+import serial
+import mysql.connector
+
+# Configure serial port communication with Arduino
+ser = serial.Serial('/dev/ttyACM0', 9600)  # Update with the correct port
+
+# Function to connect to MySQL database
+def create_db_connection():
+    try:
+        connection = mysql.connector.connect(
+            host='localhost',
+            user='root',
+            password='hello',
+            database='users'
+        )
+        if connection.is_connected():
+            print('Connected to MySQL database')
+            return connection
+    except mysql.connector.Error as e:
+        print(f'MySQL Error: {e}')
+        return None
+
+# Function to authenticate PIN
+def authenticate_pin(connection, pin):
+    try:
+        cursor = connection.cursor()
+        query = "SELECT pin FROM users WHERE pin = %s"
+        cursor.execute(query, (pin,))
+        result = cursor.fetchone()
+        return result is not None
+    except mysql.connector.Error as e:
+        print(f'MySQL Error: {e}')
+        return False
+
+# Function to send IFTTT request
+def send_ifttt_event(event, value1=""):
+    ifttt_event_url = f"https://maker.ifttt.com/trigger/{event}/with/key/c9WznJEDGkdbfxSzkCSil1"
+    payload = {"value1": value1}
+    try:
+        requests.post(ifttt_event_url, json=payload)
+    except requests.RequestException as e:
+        print(f"Error sending IFTTT event: {e}")
+
+if __name__ == "__main__":
+    connection = create_db_connection()
+
+    if connection:
+        try:
+            object_detected = False  # Flag to track object detection
+            while True:
+                if ser.in_waiting > 0:
+                    data = ser.readline().decode('utf-8').strip()
+                    if "Object detected. Threat detected!" in data:
+                        print("Object detected!")  # Print message on terminal
+                        object_detected = True
+
+                if object_detected:
+                    pin_attempt = ""
+                    while len(pin_attempt) < 4:
+                        if ser.in_waiting > 0:
+                            data = ser.readline().decode('utf-8').strip()
+                            # Extract only digits from the received data
+                            pin_digits = ''.join(filter(str.isdigit, data))
+                            pin_attempt += pin_digits
+                            print(f"Entered digits: {pin_digits}")
+
+                    print("Sending PIN for authentication...")
+                    if authenticate_pin(connection, pin_attempt):
+                        send_ifttt_event("valid_pin_entered", value1="Person's Name")
+                        print("Authentication successful! No threat detected.")
+                    else:
+                        send_ifttt_event("person_detected_threat")
+                        print("Authentication failed! Incorrect PIN, threat detected.")
+        finally:
+            connection.close()
+    else:
+        print('Failed to connect to the database')
